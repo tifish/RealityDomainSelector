@@ -1,0 +1,9 @@
+# Downloaded data (auto-fetched by Run.cmd)
+top-1m.csv
+Country.mmdb
+RealiTLScanner*.exe
+
+# Download / run artifacts
+tranco-downloads/
+realitlscanner-downloads/
+reality-scan-results/
