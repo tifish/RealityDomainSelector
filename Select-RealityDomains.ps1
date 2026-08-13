@@ -58,7 +58,7 @@ if ([string]::IsNullOrWhiteSpace($TrancoCsv)) {
     $TrancoCsv = Join-Path $ScriptDir 'top-1m.csv'
 }
 if ([string]::IsNullOrWhiteSpace($ScannerPath)) {
-    $ScannerPath = Join-Path $ScriptDir 'RealiTLScanner.exe'
+    $ScannerPath = Join-Path $ScriptDir 'RealiTLScanner-windows-64.exe'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $ScriptDir 'reality-scan-results'
@@ -350,8 +350,8 @@ $PriorityPatterns = [ordered]@{
 }
 
 $regexOptions =
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
+[System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+[System.Text.RegularExpressions.RegexOptions]::Compiled
 
 $ExcludeRegex = [regex]::new(($ExcludePatterns -join '|'), $regexOptions)
 $PriorityRegexes = @(
@@ -398,7 +398,7 @@ try {
         $rankText = $line.Substring(0, $separatorIndex)
         $domainText = $line.Substring($separatorIndex + 1)
 
-    $rankValue = 0
+        $rankValue = 0
         if (-not [int]::TryParse($rankText, [ref]$rankValue)) {
             continue
         }
@@ -432,11 +432,11 @@ try {
 
         $priorityReason = Get-PriorityReason -Domain $domain
         $candidates.Add([pscustomobject]@{
-            Rank       = $rankValue
-            Domain     = $domain
-            Priority   = $priorityReason
-            IsPriority = -not [string]::IsNullOrWhiteSpace($priorityReason)
-        })
+                Rank       = $rankValue
+                Domain     = $domain
+                Priority   = $priorityReason
+                IsPriority = -not [string]::IsNullOrWhiteSpace($priorityReason)
+            })
     }
 }
 finally {
@@ -470,7 +470,7 @@ $batchCount = 0
 $httpHandler = New-Object System.Net.Http.HttpClientHandler
 $httpHandler.AllowAutoRedirect = $false
 $httpHandler.AutomaticDecompression =
-    [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
+[System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
 $httpClient = [System.Net.Http.HttpClient]::new($httpHandler)
 $httpClient.Timeout = [TimeSpan]::FromSeconds($WebsiteTimeout)
 $httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
@@ -539,7 +539,7 @@ try {
         $batchInputPath = Join-Path $runDir "batch-$batchLabel-selected-domains.txt"
         $batchRawPath = Join-Path $runDir "batch-$batchLabel-scanner-raw.csv"
         $batchSelected | ForEach-Object { $_.Domain } |
-            Set-Content -LiteralPath $batchInputPath -Encoding ASCII
+        Set-Content -LiteralPath $batchInputPath -Encoding ASCII
 
         Write-Host ''
         Write-Host "Batch $batchCount/${MaxBatches}: selected $($batchSelected.Count) domains."
@@ -566,7 +566,7 @@ try {
         }
         elseif (-not (Test-Path -LiteralPath $batchRawPath -PathType Leaf)) {
             "IP,ORIGIN,TLS,ALPN,CURVE,CERT_LENGTH,CERT_SIGNATURE,CERT_PUBLICKEY,CERT_DOMAIN,CERT_ISSUER,GEO_CODE" |
-                Set-Content -LiteralPath $batchRawPath -Encoding ASCII
+            Set-Content -LiteralPath $batchRawPath -Encoding ASCII
         }
 
         $batchScannerRows = @()
@@ -609,17 +609,17 @@ try {
             $seenUsableRows[$dedupeKey] = $true
             $source = $selectedByDomain[$origin]
             $usableRow = [pscustomobject]@{
-                Batch          = $source.Batch
-                Rank           = $source.Rank
-                Domain         = $origin
-                IP             = $row.IP
-                TLS            = $row.TLS
-                ALPN           = $row.ALPN
-                Curve          = $row.CURVE
-                CertDomain     = $row.CERT_DOMAIN
-                CertIssuer     = $row.CERT_ISSUER
-                GeoCode        = $row.GEO_CODE
-                Priority       = $source.Priority
+                Batch      = $source.Batch
+                Rank       = $source.Rank
+                Domain     = $origin
+                IP         = $row.IP
+                TLS        = $row.TLS
+                ALPN       = $row.ALPN
+                Curve      = $row.CURVE
+                CertDomain = $row.CERT_DOMAIN
+                CertIssuer = $row.CERT_ISSUER
+                GeoCode    = $row.GEO_CODE
+                Priority   = $source.Priority
             }
             $usableRows.Add($usableRow)
             $batchUsableRows.Add($usableRow)
@@ -627,8 +627,8 @@ try {
 
         $batchTlsDomains = @(
             $batchUsableRows |
-                Sort-Object Rank, Domain |
-                Select-Object -ExpandProperty Domain -Unique
+            Sort-Object Rank, Domain |
+            Select-Object -ExpandProperty Domain -Unique
         )
 
         if ($batchTlsDomains.Count -gt 0) {
@@ -662,29 +662,29 @@ finally {
 }
 
 $selected | Sort-Object Batch, Rank |
-    Export-Csv -LiteralPath $selectedCsvPath -NoTypeInformation -Encoding UTF8
+Export-Csv -LiteralPath $selectedCsvPath -NoTypeInformation -Encoding UTF8
 $selected | ForEach-Object { $_.Domain } |
-    Set-Content -LiteralPath $selectedDomainsPath -Encoding ASCII
+Set-Content -LiteralPath $selectedDomainsPath -Encoding ASCII
 
 if ($allScannerRows.Count -gt 0) {
     $allScannerRows | Export-Csv -LiteralPath $scannerRawPath -NoTypeInformation -Encoding UTF8
 }
 else {
     "IP,ORIGIN,TLS,ALPN,CURVE,CERT_LENGTH,CERT_SIGNATURE,CERT_PUBLICKEY,CERT_DOMAIN,CERT_ISSUER,GEO_CODE" |
-        Set-Content -LiteralPath $scannerRawPath -Encoding ASCII
+    Set-Content -LiteralPath $scannerRawPath -Encoding ASCII
 }
 
 $tlsUsableDomains = @(
     $usableRows |
-        Select-Object -ExpandProperty Domain -Unique
+    Select-Object -ExpandProperty Domain -Unique
 )
 
 $websiteChecks | Export-Csv -LiteralPath $websiteChecksPath -NoTypeInformation -Encoding UTF8
 
 $usableSorted = @(
     $usableRows |
-        Where-Object { $accessibleDomainLookup.ContainsKey($_.Domain) } |
-        Sort-Object Rank, Domain, IP
+    Where-Object { $accessibleDomainLookup.ContainsKey($_.Domain) } |
+    Sort-Object Rank, Domain, IP
 )
 $usableSorted | Export-Csv -LiteralPath $usableCsvPath -NoTypeInformation -Encoding UTF8
 
