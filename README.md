@@ -19,10 +19,10 @@
 
 默认规则：
 
-- 排名范围：`2,000` 到 `30,000`
+- 排名范围：`3,000` 到 `200,000`
 - 每批随机抽取并扫描：`2,000` 个不重复候选域名
-- 最终目标：`300` 个检测合格的域名，达到后立即停止
-- 单次运行最多扫描：`10` 批；达到上限仍不足 `300` 个时输出实际合格数量
+- 最终目标：`100` 个检测合格的域名，达到后立即停止
+- 单次运行最多扫描：`10` 批；达到上限仍不足 `100` 个时输出实际合格数量
 - 排除过热大站：`google`、`facebook`、`youtube`、`cloudflare`、`microsoft`、`apple` 等
 - 排除敏感类别：AI、社交、成人、博彩、加密货币、政治、下载盗版
 - 优先保留：`docs`、`static`、`assets`、`download`、`dl`、`support`、`help`、`developer`、`mirrors`（关键词不匹配顶级域，如 `.dev`、`.help`；不再优先 `cdn`，因为这类域名多数托管在 CDN 上，会被 `GEO_CODE` 过滤掉）
@@ -33,7 +33,7 @@
 - 证书域名字段不为空
 - 扫描结果的 `ORIGIN` 必须是本次随机选中的域名
 - 排除 `GEO_CODE` 为 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY`、`GOOGLE`、`FACEBOOK`、`NETFLIX`、`TWITTER`、`TELEGRAM`、`MICROSOFT`、`APPLE` 的结果（CDN 与大厂网络）
-- 使用原域名发起 HTTPS 请求，最终返回 `2xx`；默认连续检查 `3` 轮（间隔 0.5 秒），每轮都要通过，`usable-results.csv` 的 `HttpsAvgMs` 列记录平均响应耗时
+- 使用原域名发起 HTTPS 请求，最终返回 `2xx`；默认连续检查 `2` 轮（间隔 0.5 秒），每轮都要通过，`usable-results.csv` 的 `HttpsAvgMs` 列记录平均响应耗时
 - 只保留 `GEO_CODE` 在 `-IncludedGeoCodes` 中的 IP，默认 `US`（与 VPS 同国家）
 - 对每个扫描到的 IP 用原域名作为 SNI 重新握手，证书链和主机名校验不通过的 IP 被剔除；一个 IP 都不剩的域名不合格
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
@@ -114,16 +114,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `-MinRank` | `2000` | Tranco 最小排名。 |
-| `-MaxRank` | `30000` | Tranco 最大排名。 |
+| `-MinRank` | `3000` | Tranco 最小排名。 |
+| `-MaxRank` | `200000` | Tranco 最大排名。 |
 | `-SampleCount` | `2000` | 每次随机抽取并扫描的候选域名数量。 |
-| `-ResultCount` | `300` | 最终需要的检测合格域名数量，达到后停止。 |
+| `-ResultCount` | `100` | 最终需要的检测合格域名数量，达到后停止。 |
 | `-MaxBatches` | `10` | 为达到目标，单次运行最多抽取并扫描的批次数。 |
-| `-Thread` | `16` | `RealiTLScanner` 并发数。 |
+| `-Thread` | `32` | `RealiTLScanner` 并发数。 |
 | `-Timeout` | `8` | 单个检测超时时间，单位由扫描器定义。 |
 | `-Port` | `443` | HTTPS 端口。 |
-| `-WebsiteTimeout` | `10` | 网站 HTTPS 访问检查超时秒数。 |
-| `-WebsiteCheckRounds` | `3` | 网站 HTTPS 访问检查的轮数，每轮都通过才算合格。 |
+| `-WebsiteTimeout` | `6` | 网站 HTTPS 访问检查超时秒数。 |
+| `-WebsiteCheckRounds` | `2` | 网站 HTTPS 访问检查的轮数，每轮都通过才算合格。 |
 | `-RequireTls13` | `$true` | 是否只保留 `TLS 1.3`。 |
 | `-RequireCertDomainMatch` | `$true` | 是否对每个 IP 握手校验证书对原域名有效（扫描器的 `CERT_DOMAIN` 只有 CN，不能直接比对）。 |
 | `-ExcludedGeoCodes` | `CLOUDFLARE, CLOUDFRONT, FASTLY, GOOGLE, FACEBOOK, NETFLIX, TWITTER, TELEGRAM, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |
