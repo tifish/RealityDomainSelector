@@ -10,6 +10,7 @@ The default policy follows this project:
 - exclude hot brands and sensitive categories
 - prefer docs/static/assets/download/dl/support/help/developer/mirrors/cdn names
 - keep scanner rows that are usable TLS 1.3 results
+- require the certificate to cover the domain on every kept IP
 - require an HTTPS 2xx response without changing the website domain
 
 Outputs are written to a timestamped folder under .\reality-scan-results.
@@ -33,7 +34,7 @@ param(
     [int]$WebsiteTimeout = 10,
 
     [bool]$RequireTls13 = $true,
-    [bool]$RequireCertDomainMatch = $false,
+    [bool]$RequireCertDomainMatch = $true,
     [string[]]$ExcludedGeoCodes = @(
         'CLOUDFLARE', 'CLOUDFRONT', 'FASTLY', 'GOOGLE', 'FACEBOOK',
         'NETFLIX', 'TWITTER', 'TELEGRAM', 'MICROSOFT', 'APPLE'
@@ -48,6 +49,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName System.Net.Http
+
+# Tls12 | Tls13; numeric because older .NET builds lack the Tls13 name.
+$TlsProtocols = [System.Security.Authentication.SslProtocols]15360
 
 $ScriptDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ScriptDir)) {
@@ -129,35 +133,44 @@ function Select-RandomItems {
     return @(Get-Random -InputObject $Items -Count $Count)
 }
 
-function Test-CertDomainMatch {
+function Test-CertOnIp {
     param(
-        [string]$CertDomain,
-        [string]$Origin
+        [Parameter(Mandatory = $true)]
+        [string]$Ip,
+        [Parameter(Mandatory = $true)]
+        [string]$Domain,
+        [Parameter(Mandatory = $true)]
+        [int]$HttpsPort,
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutSeconds
     )
 
-    if ([string]::IsNullOrWhiteSpace($CertDomain) -or [string]::IsNullOrWhiteSpace($Origin)) {
+    # Scanner CERT_DOMAIN only carries the certificate CN, so verify the full
+    # chain and SAN list with a real handshake against this specific IP.
+    $tcpClient = New-Object System.Net.Sockets.TcpClient
+    $sslStream = $null
+
+    try {
+        $connectTask = $tcpClient.ConnectAsync($Ip, $HttpsPort)
+        if (-not $connectTask.Wait([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+            return $false
+        }
+
+        $tcpClient.ReceiveTimeout = $TimeoutSeconds * 1000
+        $tcpClient.SendTimeout = $TimeoutSeconds * 1000
+        $sslStream = New-Object System.Net.Security.SslStream($tcpClient.GetStream(), $false)
+        $sslStream.AuthenticateAsClient($Domain, $null, $TlsProtocols, $false)
+        return $true
+    }
+    catch {
         return $false
     }
-
-    $originValue = $Origin.Trim().ToLowerInvariant()
-    $certValues = $CertDomain.ToLowerInvariant() -split '[,; ]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-
-    foreach ($certValue in $certValues) {
-        $cert = $certValue.Trim()
-
-        if ($cert -eq $originValue) {
-            return $true
+    finally {
+        if ($null -ne $sslStream) {
+            $sslStream.Dispose()
         }
-
-        if ($cert.StartsWith('*.')) {
-            $suffix = $cert.Substring(1)
-            if ($originValue.EndsWith($suffix) -and $originValue.Length -gt $suffix.Length) {
-                return $true
-            }
-        }
+        $tcpClient.Dispose()
     }
-
-    return $false
 }
 
 function Test-WebsiteAccess {
@@ -468,6 +481,7 @@ $usableRows = New-Object 'System.Collections.Generic.List[object]'
 $seenUsableRows = @{}
 $websiteChecks = New-Object 'System.Collections.Generic.List[object]'
 $accessibleDomainLookup = @{}
+$certRejectedRows = @{}
 $batchCount = 0
 
 $httpHandler = New-Object System.Net.Http.HttpClientHandler
@@ -600,10 +614,6 @@ try {
                 continue
             }
 
-            if ($RequireCertDomainMatch -and -not (Test-CertDomainMatch -CertDomain ([string]$row.CERT_DOMAIN) -Origin $origin)) {
-                continue
-            }
-
             $dedupeKey = "$origin|$($row.IP)"
             if ($seenUsableRows.ContainsKey($dedupeKey)) {
                 continue
@@ -640,6 +650,24 @@ try {
             foreach ($domain in $batchTlsDomains) {
                 $check = Test-WebsiteAccess -Domain $domain -HttpClient $httpClient -HttpsPort $Port
                 $check | Add-Member -NotePropertyName Batch -NotePropertyValue $batchCount
+
+                if ($check.AccessOk -and $RequireCertDomainMatch) {
+                    $certOkCount = 0
+                    foreach ($usableRow in @($batchUsableRows | Where-Object { $_.Domain -eq $domain })) {
+                        if (Test-CertOnIp -Ip $usableRow.IP -Domain $domain -HttpsPort $Port -TimeoutSeconds $Timeout) {
+                            $certOkCount++
+                        }
+                        else {
+                            $certRejectedRows["$domain|$($usableRow.IP)"] = $true
+                        }
+                    }
+
+                    if ($certOkCount -eq 0) {
+                        $check.AccessOk = $false
+                        $check.Error = 'No scanned IP served a certificate valid for the domain.'
+                    }
+                }
+
                 $websiteChecks.Add($check)
 
                 if ($check.AccessOk) {
@@ -686,7 +714,10 @@ $websiteChecks | Export-Csv -LiteralPath $websiteChecksPath -NoTypeInformation -
 
 $usableSorted = @(
     $usableRows |
-    Where-Object { $accessibleDomainLookup.ContainsKey($_.Domain) } |
+    Where-Object {
+        $accessibleDomainLookup.ContainsKey($_.Domain) -and
+        -not $certRejectedRows.ContainsKey("$($_.Domain)|$($_.IP)")
+    } |
     Sort-Object Rank, Domain, IP
 )
 $usableSorted | Export-Csv -LiteralPath $usableCsvPath -NoTypeInformation -Encoding UTF8
@@ -719,6 +750,7 @@ $summaryLines = @(
     "Usable domains: $($usableDomains.Count)",
     "Require TLS 1.3: $RequireTls13",
     "Require cert domain match: $RequireCertDomainMatch",
+    "IP rows rejected by certificate check: $($certRejectedRows.Count)",
     "Website timeout seconds: $WebsiteTimeout",
     "Excluded GEO_CODE values: $($ExcludedGeoCodes -join ', ')",
     "Selected CSV: $selectedCsvPath",
