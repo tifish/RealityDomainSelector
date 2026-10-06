@@ -4,9 +4,9 @@ Select random Tranco domains and verify them with RealiTLScanner.
 
 .DESCRIPTION
 The default policy follows this project:
-- rank range: 5,000 to 300,000
-- batch size: 100 domains
-- result target: 20 qualified domains
+- rank range: 2,000 to 30,000
+- batch size: 2,000 domains
+- result target: 300 qualified domains
 - exclude hot brands and sensitive categories
 - prefer docs/static/assets/download/dl/support/help/developer/mirrors/cdn names
 - keep scanner rows that are usable TLS 1.3 results
@@ -21,10 +21,10 @@ param(
     [string]$ScannerPath = '',
     [string]$OutputDir = '',
 
-    [int]$MinRank = 5000,
-    [int]$MaxRank = 300000,
-    [int]$SampleCount = 100,
-    [int]$ResultCount = 20,
+    [int]$MinRank = 2000,
+    [int]$MaxRank = 200000,
+    [int]$SampleCount = 2000,
+    [int]$ResultCount = 100,
     [int]$MaxBatches = 10,
 
     [int]$Thread = 16,

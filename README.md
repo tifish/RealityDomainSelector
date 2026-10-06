@@ -18,10 +18,10 @@
 
 默认规则：
 
-- 排名范围：`5,000` 到 `300,000`
-- 每批随机抽取并扫描：`100` 个不重复候选域名
-- 最终目标：`20` 个检测合格的域名，达到后立即停止
-- 单次运行最多扫描：`10` 批；达到上限仍不足 `20` 个时输出实际合格数量
+- 排名范围：`2,000` 到 `30,000`
+- 每批随机抽取并扫描：`2,000` 个不重复候选域名
+- 最终目标：`300` 个检测合格的域名，达到后立即停止
+- 单次运行最多扫描：`10` 批；达到上限仍不足 `300` 个时输出实际合格数量
 - 排除过热大站：`google`、`facebook`、`youtube`、`cloudflare`、`microsoft`、`apple` 等
 - 排除敏感类别：AI、社交、成人、博彩、加密货币、政治、下载盗版
 - 优先保留：`docs`、`static`、`assets`、`download`、`dl`、`support`、`help`、`developer`、`mirrors`、`cdn`
@@ -97,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | --- | --- |
 | `selected-domains.txt` | 本次随机抽中的域名，一行一个，可直接作为扫描器输入。 |
 | `selected-domains.csv` | 本次各批随机抽中的域名，包含批次、排名和优先命中原因。 |
-| `batch-<序号>-selected-domains.txt` | 单批扫描器输入，每批最多 100 个域名。 |
+| `batch-<序号>-selected-domains.txt` | 单批扫描器输入，每批最多 2,000 个域名。 |
 | `batch-<序号>-scanner-raw.csv` | 单批 `RealiTLScanner.exe` 原始输出。 |
 | `scanner-raw.csv` | 所有批次的扫描器原始输出汇总。 |
 | `website-checks.csv` | HTTPS 访问检查明细，包括最终 URL、跳转次数、域名是否改变和错误信息。 |
@@ -109,10 +109,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `-MinRank` | `5000` | Tranco 最小排名。 |
-| `-MaxRank` | `300000` | Tranco 最大排名。 |
-| `-SampleCount` | `100` | 每次随机抽取并扫描的候选域名数量。 |
-| `-ResultCount` | `20` | 最终需要的检测合格域名数量，达到后停止。 |
+| `-MinRank` | `2000` | Tranco 最小排名。 |
+| `-MaxRank` | `30000` | Tranco 最大排名。 |
+| `-SampleCount` | `2000` | 每次随机抽取并扫描的候选域名数量。 |
+| `-ResultCount` | `300` | 最终需要的检测合格域名数量，达到后停止。 |
 | `-MaxBatches` | `10` | 为达到目标，单次运行最多抽取并扫描的批次数。 |
 | `-Thread` | `16` | `RealiTLScanner` 并发数。 |
 | `-Timeout` | `8` | 单个检测超时时间，单位由扫描器定义。 |
