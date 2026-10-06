@@ -32,7 +32,7 @@
 - 证书域名字段不为空
 - 扫描结果的 `ORIGIN` 必须是本次随机选中的域名
 - 排除 `GEO_CODE` 为 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY`、`GOOGLE`、`FACEBOOK`、`NETFLIX`、`TWITTER`、`TELEGRAM`、`MICROSOFT`、`APPLE` 的结果（CDN 与大厂网络）
-- 使用原域名发起 HTTPS 请求，最终返回 `2xx`
+- 使用原域名发起 HTTPS 请求，最终返回 `2xx`；默认连续检查 `3` 轮（间隔 0.5 秒），每轮都要通过，`usable-results.csv` 的 `HttpsAvgMs` 列记录平均响应耗时
 - 对每个扫描到的 IP 用原域名作为 SNI 重新握手，证书链和主机名校验不通过的 IP 被剔除；一个 IP 都不剩的域名不合格
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
 - 跳转链中主机名发生变化时，原域名不合格；但如果跳到的是自身子域（如 `example.com` 跳到 `www.example.com`），会把跳转后的主机名作为新候选，在同一批内重新扫描和检查，结果中 `RedirectFrom` 列记录来源域名
@@ -120,6 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | `-Timeout` | `8` | 单个检测超时时间，单位由扫描器定义。 |
 | `-Port` | `443` | HTTPS 端口。 |
 | `-WebsiteTimeout` | `10` | 网站 HTTPS 访问检查超时秒数。 |
+| `-WebsiteCheckRounds` | `3` | 网站 HTTPS 访问检查的轮数，每轮都通过才算合格。 |
 | `-RequireTls13` | `$true` | 是否只保留 `TLS 1.3`。 |
 | `-RequireCertDomainMatch` | `$true` | 是否对每个 IP 握手校验证书对原域名有效（扫描器的 `CERT_DOMAIN` 只有 CN，不能直接比对）。 |
 | `-ExcludedGeoCodes` | `CLOUDFLARE, CLOUDFRONT, FASTLY, GOOGLE, FACEBOOK, NETFLIX, TWITTER, TELEGRAM, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |

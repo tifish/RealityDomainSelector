@@ -11,7 +11,7 @@ The default policy follows this project:
 - prefer docs/static/assets/download/dl/support/help/developer/mirrors names
 - keep scanner rows that are usable TLS 1.3 results
 - require the certificate to cover the domain on every kept IP
-- require an HTTPS 2xx response without changing the website domain
+- require an HTTPS 2xx response without changing the website domain, in every check round
 - re-scan hosts reached by same-site redirects (example.com -> www.example.com)
 
 Outputs are written to a timestamped folder under .\reality-scan-results.
@@ -33,6 +33,7 @@ param(
     [int]$Timeout = 8,
     [int]$Port = 443,
     [int]$WebsiteTimeout = 10,
+    [int]$WebsiteCheckRounds = 3,
 
     [bool]$RequireTls13 = $true,
     [bool]$RequireCertDomainMatch = $true,
@@ -190,6 +191,7 @@ function Test-WebsiteAccess {
     $response = $null
     $redirectCount = 0
     $maxRedirects = 10
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
         while ($true) {
@@ -215,6 +217,7 @@ function Test-WebsiteAccess {
                     DomainChanged = $false
                     Location      = ''
                     Error         = ''
+                    ElapsedMs     = $stopwatch.ElapsedMilliseconds
                 }
             }
 
@@ -230,6 +233,7 @@ function Test-WebsiteAccess {
                     DomainChanged = $false
                     Location      = ''
                     Error         = 'Redirect response did not include a Location header.'
+                    ElapsedMs     = $stopwatch.ElapsedMilliseconds
                 }
             }
 
@@ -259,6 +263,7 @@ function Test-WebsiteAccess {
                     DomainChanged = $true
                     Location      = [string]$location
                     Error         = 'Redirect changed the website domain.'
+                    ElapsedMs     = $stopwatch.ElapsedMilliseconds
                 }
             }
 
@@ -274,6 +279,7 @@ function Test-WebsiteAccess {
                     DomainChanged = $false
                     Location      = [string]$location
                     Error         = "More than $maxRedirects redirects."
+                    ElapsedMs     = $stopwatch.ElapsedMilliseconds
                 }
             }
 
@@ -294,6 +300,7 @@ function Test-WebsiteAccess {
             DomainChanged = $false
             Location      = ''
             Error         = $_.Exception.GetBaseException().Message
+            ElapsedMs     = $stopwatch.ElapsedMilliseconds
         }
     }
     finally {
@@ -324,6 +331,10 @@ if ($MaxBatches -lt 1) {
 
 if ($WebsiteTimeout -lt 1) {
     throw "WebsiteTimeout must be greater than 0."
+}
+
+if ($WebsiteCheckRounds -lt 1) {
+    throw "WebsiteCheckRounds must be greater than 0."
 }
 
 if ($Seed -ne 0) {
@@ -670,6 +681,24 @@ try {
 
                 foreach ($domain in $passTlsDomains) {
                     $check = Test-WebsiteAccess -Domain $domain -HttpClient $httpClient -HttpsPort $Port
+                    $elapsedSamples = @($check.ElapsedMs)
+
+                    # Repeat the request so one lucky response does not qualify a flaky site.
+                    for ($round = 2; $check.AccessOk -and $round -le $WebsiteCheckRounds; $round++) {
+                        Start-Sleep -Milliseconds 500
+                        $retry = Test-WebsiteAccess -Domain $domain -HttpClient $httpClient -HttpsPort $Port
+
+                        if (-not $retry.AccessOk) {
+                            $retry.Error = "Round $round failed: status $($retry.StatusCode) $($retry.Error)".Trim()
+                            $check = $retry
+                            break
+                        }
+
+                        $elapsedSamples += $retry.ElapsedMs
+                    }
+
+                    $avgElapsedMs = [int]($elapsedSamples | Measure-Object -Average).Average
+                    $check | Add-Member -NotePropertyName AvgElapsedMs -NotePropertyValue $avgElapsedMs
                     $check | Add-Member -NotePropertyName Batch -NotePropertyValue $batchCount
 
                     if ($check.AccessOk -and $RequireCertDomainMatch) {
@@ -716,7 +745,7 @@ try {
                     }
 
                     if ($check.AccessOk) {
-                        $accessibleDomainLookup[$domain] = $true
+                        $accessibleDomainLookup[$domain] = $avgElapsedMs
 
                         if ($accessibleDomainLookup.Count -ge $ResultCount) {
                             break
@@ -771,6 +800,7 @@ $usableSorted = @(
         $accessibleDomainLookup.ContainsKey($_.Domain) -and
         -not $certRejectedRows.ContainsKey("$($_.Domain)|$($_.IP)")
     } |
+    Select-Object *, @{ Name = 'HttpsAvgMs'; Expression = { $accessibleDomainLookup[$_.Domain] } } |
     Sort-Object Rank, Domain, IP
 )
 $usableSorted | Export-Csv -LiteralPath $usableCsvPath -NoTypeInformation -Encoding UTF8
@@ -806,6 +836,7 @@ $summaryLines = @(
     "Require cert domain match: $RequireCertDomainMatch",
     "IP rows rejected by certificate check: $($certRejectedRows.Count)",
     "Website timeout seconds: $WebsiteTimeout",
+    "Website check rounds: $WebsiteCheckRounds",
     "Excluded GEO_CODE values: $($ExcludedGeoCodes -join ', ')",
     "Selected CSV: $selectedCsvPath",
     "Scanner raw CSV: $scannerRawPath",
