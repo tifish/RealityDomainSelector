@@ -35,7 +35,7 @@
 - 使用原域名发起 HTTPS 请求，最终返回 `2xx`
 - 对每个扫描到的 IP 用原域名作为 SNI 重新握手，证书链和主机名校验不通过的 IP 被剔除；一个 IP 都不剩的域名不合格
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
-- 跳转链中主机名发生变化时排除，包括 `example.com` 跳到 `www.example.com`
+- 跳转链中主机名发生变化时，原域名不合格；但如果跳到的是自身子域（如 `example.com` 跳到 `www.example.com`），会把跳转后的主机名作为新候选，在同一批内重新扫描和检查，结果中 `RedirectFrom` 列记录来源域名
 
 ## 更新 Tranco 数据
 
@@ -100,6 +100,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | `selected-domains.csv` | 本次各批随机抽中的域名，包含批次、排名和优先命中原因。 |
 | `batch-<序号>-selected-domains.txt` | 单批扫描器输入，每批最多 2,000 个域名。 |
 | `batch-<序号>-scanner-raw.csv` | 单批 `RealiTLScanner.exe` 原始输出。 |
+| `batch-<序号>-redirect-*` | 同一批中同站跳转主机名的补扫输入和输出。 |
 | `scanner-raw.csv` | 所有批次的扫描器原始输出汇总。 |
 | `website-checks.csv` | HTTPS 访问检查明细，包括最终 URL、跳转次数、域名是否改变和错误信息。 |
 | `usable-results.csv` | 按脚本规则过滤后的可用结果明细。 |
@@ -163,5 +164,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 
 - Tranco 原始列表通常只包含根域名或主域名，不一定包含 `docs.example.com` 这类子域名；优先关键词只会匹配列表中实际存在的域名字符串。
 - 随机样本可能一次没有可用结果，直接重新运行脚本即可抽取新样本。
 - 扫描会产生真实网络请求，建议只在合规网络环境中使用。
-- HTTPS 检查会跟随最多 10 次同域名跳转；只比较主机名，路径变化不算域名跳转。
+- HTTPS 检查会跟随最多 10 次同域名跳转；只比较主机名，路径变化不算域名跳转。同站子域跳转只补扫一层，补扫的主机名再次跨域跳转则直接排除。
 - `usable-domains.txt` 中只包含通过 TLS/REALITY、最终返回 `2xx` 且跳转链未改变域名的结果，最终使用前仍建议手动检查域名业务类型、访问稳定性和证书信息。

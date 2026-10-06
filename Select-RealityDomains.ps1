@@ -12,6 +12,7 @@ The default policy follows this project:
 - keep scanner rows that are usable TLS 1.3 results
 - require the certificate to cover the domain on every kept IP
 - require an HTTPS 2xx response without changing the website domain
+- re-scan hosts reached by same-site redirects (example.com -> www.example.com)
 
 Outputs are written to a timestamped folder under .\reality-scan-results.
 #>
@@ -531,11 +532,12 @@ try {
             }
 
             $batchItem = [pscustomobject]@{
-                Batch      = $batchCount
-                Rank       = $item.Rank
-                Domain     = $item.Domain
-                Priority   = $item.Priority
-                IsPriority = $item.IsPriority
+                Batch        = $batchCount
+                Rank         = $item.Rank
+                Domain       = $item.Domain
+                Priority     = $item.Priority
+                IsPriority   = $item.IsPriority
+                RedirectFrom = ''
             }
             $batchSelected.Add($batchItem)
             $selected.Add($batchItem)
@@ -554,131 +556,181 @@ try {
         }
 
         $batchLabel = '{0:D3}' -f $batchCount
-        $batchInputPath = Join-Path $runDir "batch-$batchLabel-selected-domains.txt"
-        $batchRawPath = Join-Path $runDir "batch-$batchLabel-scanner-raw.csv"
-        $batchSelected | ForEach-Object { $_.Domain } |
-        Set-Content -LiteralPath $batchInputPath -Encoding ASCII
 
         Write-Host ''
         Write-Host "Batch $batchCount/${MaxBatches}: selected $($batchSelected.Count) domains."
 
-        if (-not $SkipScan) {
-            $scannerArgs = @(
-                '-in', $batchInputPath,
-                '-out', $batchRawPath,
-                '-port', [string]$Port,
-                '-thread', [string]$Thread,
-                '-timeout', [string]$Timeout
+        # Pass 1 scans the sampled domains. Pass 2 scans hosts that pass-1 domains
+        # redirected to inside their own site (example.com -> www.example.com):
+        # those hosts are the ones that actually serve the website.
+        $passItems = $batchSelected.ToArray()
+        $pass = 1
+
+        while ($passItems.Count -gt 0 -and $accessibleDomainLookup.Count -lt $ResultCount) {
+            if ($pass -eq 1) {
+                $passPrefix = "batch-$batchLabel"
+            }
+            else {
+                $passPrefix = "batch-$batchLabel-redirect"
+                Write-Host "Following same-site redirects for $($passItems.Count) hosts..."
+            }
+
+            $batchInputPath = Join-Path $runDir "$passPrefix-selected-domains.txt"
+            $batchRawPath = Join-Path $runDir "$passPrefix-scanner-raw.csv"
+            $passItems | ForEach-Object { $_.Domain } |
+            Set-Content -LiteralPath $batchInputPath -Encoding ASCII
+            $nextPassItems = New-Object 'System.Collections.Generic.List[object]'
+
+            if (-not $SkipScan) {
+                $scannerArgs = @(
+                    '-in', $batchInputPath,
+                    '-out', $batchRawPath,
+                    '-port', [string]$Port,
+                    '-thread', [string]$Thread,
+                    '-timeout', [string]$Timeout
+                )
+
+                if ($IncludeIpv6.IsPresent) {
+                    $scannerArgs += '-46'
+                }
+
+                Write-Host "Running RealiTLScanner for batch $batchCount pass $pass..."
+                & $ScannerPath @scannerArgs
+
+                if ($LASTEXITCODE -ne 0) {
+                    throw "RealiTLScanner exited with code $LASTEXITCODE in batch $batchCount pass $pass"
+                }
+            }
+            elseif (-not (Test-Path -LiteralPath $batchRawPath -PathType Leaf)) {
+                "IP,ORIGIN,TLS,ALPN,CURVE,CERT_LENGTH,CERT_SIGNATURE,CERT_PUBLICKEY,CERT_DOMAIN,CERT_ISSUER,GEO_CODE" |
+                Set-Content -LiteralPath $batchRawPath -Encoding ASCII
+            }
+
+            $passScannerRows = @()
+            if (Test-Path -LiteralPath $batchRawPath -PathType Leaf) {
+                $passScannerRows = @(Import-Csv -LiteralPath $batchRawPath)
+            }
+
+            $passUsableRows = New-Object 'System.Collections.Generic.List[object]'
+
+            foreach ($row in $passScannerRows) {
+                $allScannerRows.Add($row)
+                $origin = ([string]$row.ORIGIN).Trim().ToLowerInvariant()
+
+                if (-not $selectedByDomain.ContainsKey($origin)) {
+                    continue
+                }
+
+                if ($RequireTls13 -and ([string]$row.TLS -ne 'TLS 1.3')) {
+                    continue
+                }
+
+                if ([string]::IsNullOrWhiteSpace([string]$row.CERT_DOMAIN)) {
+                    continue
+                }
+
+                $geoCode = ([string]$row.GEO_CODE).Trim().ToUpperInvariant()
+                if ($excludedGeoLookup.ContainsKey($geoCode)) {
+                    continue
+                }
+
+                $dedupeKey = "$origin|$($row.IP)"
+                if ($seenUsableRows.ContainsKey($dedupeKey)) {
+                    continue
+                }
+
+                $seenUsableRows[$dedupeKey] = $true
+                $source = $selectedByDomain[$origin]
+                $usableRow = [pscustomobject]@{
+                    Batch        = $source.Batch
+                    Rank         = $source.Rank
+                    Domain       = $origin
+                    IP           = $row.IP
+                    TLS          = $row.TLS
+                    ALPN         = $row.ALPN
+                    Curve        = $row.CURVE
+                    CertDomain   = $row.CERT_DOMAIN
+                    CertIssuer   = $row.CERT_ISSUER
+                    GeoCode      = $row.GEO_CODE
+                    Priority     = $source.Priority
+                    RedirectFrom = $source.RedirectFrom
+                }
+                $usableRows.Add($usableRow)
+                $passUsableRows.Add($usableRow)
+            }
+
+            $passTlsDomains = @(
+                $passUsableRows |
+                Sort-Object Rank, Domain |
+                Select-Object -ExpandProperty Domain -Unique
             )
 
-            if ($IncludeIpv6.IsPresent) {
-                $scannerArgs += '-46'
-            }
+            if ($passTlsDomains.Count -gt 0) {
+                Write-Host "Checking direct HTTPS access for $($passTlsDomains.Count) domains..."
 
-            Write-Host "Running RealiTLScanner for batch $batchCount..."
-            & $ScannerPath @scannerArgs
+                foreach ($domain in $passTlsDomains) {
+                    $check = Test-WebsiteAccess -Domain $domain -HttpClient $httpClient -HttpsPort $Port
+                    $check | Add-Member -NotePropertyName Batch -NotePropertyValue $batchCount
 
-            if ($LASTEXITCODE -ne 0) {
-                throw "RealiTLScanner exited with code $LASTEXITCODE in batch $batchCount"
-            }
-        }
-        elseif (-not (Test-Path -LiteralPath $batchRawPath -PathType Leaf)) {
-            "IP,ORIGIN,TLS,ALPN,CURVE,CERT_LENGTH,CERT_SIGNATURE,CERT_PUBLICKEY,CERT_DOMAIN,CERT_ISSUER,GEO_CODE" |
-            Set-Content -LiteralPath $batchRawPath -Encoding ASCII
-        }
-
-        $batchScannerRows = @()
-        if (Test-Path -LiteralPath $batchRawPath -PathType Leaf) {
-            $batchScannerRows = @(Import-Csv -LiteralPath $batchRawPath)
-        }
-
-        $batchUsableRows = New-Object 'System.Collections.Generic.List[object]'
-
-        foreach ($row in $batchScannerRows) {
-            $allScannerRows.Add($row)
-            $origin = ([string]$row.ORIGIN).Trim().ToLowerInvariant()
-
-            if (-not $selectedByDomain.ContainsKey($origin)) {
-                continue
-            }
-
-            if ($RequireTls13 -and ([string]$row.TLS -ne 'TLS 1.3')) {
-                continue
-            }
-
-            if ([string]::IsNullOrWhiteSpace([string]$row.CERT_DOMAIN)) {
-                continue
-            }
-
-            $geoCode = ([string]$row.GEO_CODE).Trim().ToUpperInvariant()
-            if ($excludedGeoLookup.ContainsKey($geoCode)) {
-                continue
-            }
-
-            $dedupeKey = "$origin|$($row.IP)"
-            if ($seenUsableRows.ContainsKey($dedupeKey)) {
-                continue
-            }
-
-            $seenUsableRows[$dedupeKey] = $true
-            $source = $selectedByDomain[$origin]
-            $usableRow = [pscustomobject]@{
-                Batch      = $source.Batch
-                Rank       = $source.Rank
-                Domain     = $origin
-                IP         = $row.IP
-                TLS        = $row.TLS
-                ALPN       = $row.ALPN
-                Curve      = $row.CURVE
-                CertDomain = $row.CERT_DOMAIN
-                CertIssuer = $row.CERT_ISSUER
-                GeoCode    = $row.GEO_CODE
-                Priority   = $source.Priority
-            }
-            $usableRows.Add($usableRow)
-            $batchUsableRows.Add($usableRow)
-        }
-
-        $batchTlsDomains = @(
-            $batchUsableRows |
-            Sort-Object Rank, Domain |
-            Select-Object -ExpandProperty Domain -Unique
-        )
-
-        if ($batchTlsDomains.Count -gt 0) {
-            Write-Host "Checking direct HTTPS access for $($batchTlsDomains.Count) domains..."
-
-            foreach ($domain in $batchTlsDomains) {
-                $check = Test-WebsiteAccess -Domain $domain -HttpClient $httpClient -HttpsPort $Port
-                $check | Add-Member -NotePropertyName Batch -NotePropertyValue $batchCount
-
-                if ($check.AccessOk -and $RequireCertDomainMatch) {
-                    $certOkCount = 0
-                    foreach ($usableRow in @($batchUsableRows | Where-Object { $_.Domain -eq $domain })) {
-                        if (Test-CertOnIp -Ip $usableRow.IP -Domain $domain -HttpsPort $Port -TimeoutSeconds $Timeout) {
-                            $certOkCount++
+                    if ($check.AccessOk -and $RequireCertDomainMatch) {
+                        $certOkCount = 0
+                        foreach ($usableRow in @($passUsableRows | Where-Object { $_.Domain -eq $domain })) {
+                            if (Test-CertOnIp -Ip $usableRow.IP -Domain $domain -HttpsPort $Port -TimeoutSeconds $Timeout) {
+                                $certOkCount++
+                            }
+                            else {
+                                $certRejectedRows["$domain|$($usableRow.IP)"] = $true
+                            }
                         }
-                        else {
-                            $certRejectedRows["$domain|$($usableRow.IP)"] = $true
+
+                        if ($certOkCount -eq 0) {
+                            $check.AccessOk = $false
+                            $check.Error = 'No scanned IP served a certificate valid for the domain.'
                         }
                     }
 
-                    if ($certOkCount -eq 0) {
-                        $check.AccessOk = $false
-                        $check.Error = 'No scanned IP served a certificate valid for the domain.'
+                    $websiteChecks.Add($check)
+
+                    if ($pass -eq 1 -and $check.DomainChanged) {
+                        $redirectHost = ([System.Uri]$check.FinalUrl).DnsSafeHost.ToLowerInvariant()
+
+                        if (
+                            $redirectHost.EndsWith(".$domain") -and
+                            -not $seenDomains.ContainsKey($redirectHost) -and
+                            -not $ExcludeRegex.IsMatch($redirectHost)
+                        ) {
+                            $seenDomains[$redirectHost] = $true
+                            $source = $selectedByDomain[$domain]
+                            $redirectItem = [pscustomobject]@{
+                                Batch        = $batchCount
+                                Rank         = $source.Rank
+                                Domain       = $redirectHost
+                                Priority     = $source.Priority
+                                IsPriority   = $source.IsPriority
+                                RedirectFrom = $domain
+                            }
+                            $nextPassItems.Add($redirectItem)
+                            $selected.Add($redirectItem)
+                            $selectedByDomain[$redirectHost] = $redirectItem
+                        }
                     }
-                }
 
-                $websiteChecks.Add($check)
+                    if ($check.AccessOk) {
+                        $accessibleDomainLookup[$domain] = $true
 
-                if ($check.AccessOk) {
-                    $accessibleDomainLookup[$domain] = $true
-
-                    if ($accessibleDomainLookup.Count -ge $ResultCount) {
-                        break
+                        if ($accessibleDomainLookup.Count -ge $ResultCount) {
+                            break
+                        }
                     }
                 }
             }
+
+            if ($pass -ge 2) {
+                break
+            }
+
+            $passItems = $nextPassItems.ToArray()
+            $pass++
         }
 
         Write-Host "Qualified domains so far: $($accessibleDomainLookup.Count)/$ResultCount"
@@ -741,6 +793,7 @@ $summaryLines = @(
     "Batches run: $batchCount",
     "Maximum batches: $MaxBatches",
     "Total selected domains: $($selected.Count)",
+    "Same-site redirect hosts scanned: $(@($selected | Where-Object { $_.RedirectFrom }).Count)",
     "Qualified domain target: $ResultCount",
     "Target reached: $($accessibleDomainLookup.Count -ge $ResultCount)",
     "Scanner rows: $($allScannerRows.Count)",
