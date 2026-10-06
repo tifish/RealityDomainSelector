@@ -10,7 +10,7 @@ The default policy follows this project:
 - exclude hot brands and sensitive categories
 - prefer docs/static/assets/download/dl/support/help/developer/mirrors names
 - keep scanner rows that are usable TLS 1.3 results
-- optionally keep only IPs in the given countries (-IncludedGeoCodes)
+- keep only IPs in the given countries (-IncludedGeoCodes, default US)
 - require the certificate to cover the domain on every kept IP
 - require an HTTPS 2xx response without changing the website domain, in every check round
 - re-scan hosts reached by same-site redirects (example.com -> www.example.com)
@@ -38,7 +38,7 @@ param(
 
     [bool]$RequireTls13 = $true,
     [bool]$RequireCertDomainMatch = $true,
-    [string[]]$IncludedGeoCodes = @(),
+    [string[]]$IncludedGeoCodes = @('US'),
     [string[]]$ExcludedGeoCodes = @(
         'CLOUDFLARE', 'CLOUDFRONT', 'FASTLY', 'GOOGLE', 'FACEBOOK',
         'NETFLIX', 'TWITTER', 'TELEGRAM', 'MICROSOFT', 'APPLE'

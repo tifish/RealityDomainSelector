@@ -34,7 +34,7 @@
 - 扫描结果的 `ORIGIN` 必须是本次随机选中的域名
 - 排除 `GEO_CODE` 为 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY`、`GOOGLE`、`FACEBOOK`、`NETFLIX`、`TWITTER`、`TELEGRAM`、`MICROSOFT`、`APPLE` 的结果（CDN 与大厂网络）
 - 使用原域名发起 HTTPS 请求，最终返回 `2xx`；默认连续检查 `3` 轮（间隔 0.5 秒），每轮都要通过，`usable-results.csv` 的 `HttpsAvgMs` 列记录平均响应耗时
-- 指定 `-IncludedGeoCodes` 时，只保留 `GEO_CODE` 在列表中的 IP（例如与 VPS 同国家的 `US`）
+- 只保留 `GEO_CODE` 在 `-IncludedGeoCodes` 中的 IP，默认 `US`（与 VPS 同国家）
 - 对每个扫描到的 IP 用原域名作为 SNI 重新握手，证书链和主机名校验不通过的 IP 被剔除；一个 IP 都不剩的域名不合格
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
 - 跳转链中主机名发生变化时，原域名不合格；但如果跳到的是自身子域（如 `example.com` 跳到 `www.example.com`），会把跳转后的主机名作为新候选，在同一批内重新扫描和检查，结果中 `RedirectFrom` 列记录来源域名
@@ -127,7 +127,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | `-RequireTls13` | `$true` | 是否只保留 `TLS 1.3`。 |
 | `-RequireCertDomainMatch` | `$true` | 是否对每个 IP 握手校验证书对原域名有效（扫描器的 `CERT_DOMAIN` 只有 CN，不能直接比对）。 |
 | `-ExcludedGeoCodes` | `CLOUDFLARE, CLOUDFRONT, FASTLY, GOOGLE, FACEBOOK, NETFLIX, TWITTER, TELEGRAM, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |
-| `-IncludedGeoCodes` | 空（不限） | 只保留这些国家/地区代码的扫描结果，建议设为 VPS 所在国家，如 `US` 或 `US,CA`。 |
+| `-IncludedGeoCodes` | `US` | 只保留这些国家/地区代码的扫描结果，应与 VPS 所在国家一致，如 `US,CA`；传 `""` 表示不限。 |
 | `-IncludeIpv6` | 关闭 | 启用扫描器的 `-46` 参数，同时检测 IPv6。 |
 | `-SkipScan` | 关闭 | 只生成随机候选，不调用扫描器。 |
 | `-Seed` | `0` | 随机种子；设置后可复现同一批候选。 |
@@ -158,10 +158,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -RequireCertDomainMatch $false
 ```
 
-只保留与 VPS 同国家（例如美国）的目标：
+VPS 在日本时只保留日本的目标（默认为美国）：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -IncludedGeoCodes US
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -IncludedGeoCodes JP
+```
+
+不限制国家：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -IncludedGeoCodes ""
 ```
 
 不按 `GEO_CODE` 排除热网络：
