@@ -8,7 +8,8 @@
 | --- | --- |
 | `top-1m.csv` | Tranco 下载的网站排名列表，格式为 `rank,domain`。 |
 | `RealiTLScanner.exe` | 用于验证域名 TLS 信息的扫描工具。 |
-| `Country.mmdb` | 扫描器使用的地理/网络归属数据库。 |
+| `Country.mmdb` | 扫描器使用的地理/网络归属数据库，来自 [Loyalsoldier/geoip](https://github.com/Loyalsoldier/geoip)，带 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY` 等网络标签；原版 GeoLite2 没有这些标签，CDN 排除会失效。 |
+| `Update-CountryMmdb.ps1` | 下载 `Country.mmdb`，并校验其中包含 CDN 标签。 |
 | `Update-TrancoTop1M.ps1` | 下载并解压最新 Tranco `top-1m.csv` 的脚本。 |
 | `Select-RealityDomains.ps1` | 当前工程的筛选与扫描脚本。 |
 | `tranco-downloads/` | Tranco 下载脚本的运行摘要和临时下载目录。 |

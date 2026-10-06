@@ -1,11 +1,17 @@
 <#
 .SYNOPSIS
-Download the latest GeoLite2 Country MMDB for RealiTLScanner.
+Download the latest Country MMDB for RealiTLScanner.
+
+.DESCRIPTION
+Uses the Loyalsoldier/geoip build, which adds network tags such as CLOUDFLARE,
+CLOUDFRONT and FASTLY on top of GeoLite2 country codes. Select-RealityDomains.ps1
+relies on these tags to exclude CDN-hosted targets; a plain GeoLite2 database
+would report those IPs as ordinary countries such as US.
 #>
 
 [CmdletBinding()]
 param(
-    [string]$DownloadUrl = 'https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb',
+    [string]$DownloadUrl = 'https://github.com/Loyalsoldier/geoip/releases/latest/download/Country.mmdb',
     [string]$OutputPath = ''
 )
 
@@ -26,11 +32,21 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
 Write-Host "Downloading $DownloadUrl"
 Write-Host "Output: $OutputPath"
 
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $OutputPath -UseBasicParsing
+$tempPath = "$OutputPath.download"
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $tempPath -UseBasicParsing
 
-$item = Get-Item -LiteralPath $OutputPath
+$item = Get-Item -LiteralPath $tempPath
 if ($item.Length -le 0) {
-    throw "Downloaded MMDB is empty: $OutputPath"
+    Remove-Item -LiteralPath $tempPath -Force
+    throw "Downloaded MMDB is empty: $DownloadUrl"
 }
+
+$content = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($tempPath))
+if ($content.IndexOf('CLOUDFLARE', [System.StringComparison]::Ordinal) -lt 0) {
+    Remove-Item -LiteralPath $tempPath -Force
+    throw "Downloaded MMDB has no CLOUDFLARE tag, so CDN exclusion would not work: $DownloadUrl"
+}
+
+Move-Item -LiteralPath $tempPath -Destination $OutputPath -Force
 
 Write-Host "Done. $($item.Length) bytes."
