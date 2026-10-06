@@ -10,6 +10,7 @@ The default policy follows this project:
 - exclude hot brands and sensitive categories
 - prefer docs/static/assets/download/dl/support/help/developer/mirrors names
 - keep scanner rows that are usable TLS 1.3 results
+- optionally keep only IPs in the given countries (-IncludedGeoCodes)
 - require the certificate to cover the domain on every kept IP
 - require an HTTPS 2xx response without changing the website domain, in every check round
 - re-scan hosts reached by same-site redirects (example.com -> www.example.com)
@@ -37,6 +38,7 @@ param(
 
     [bool]$RequireTls13 = $true,
     [bool]$RequireCertDomainMatch = $true,
+    [string[]]$IncludedGeoCodes = @(),
     [string[]]$ExcludedGeoCodes = @(
         'CLOUDFLARE', 'CLOUDFRONT', 'FASTLY', 'GOOGLE', 'FACEBOOK',
         'NETFLIX', 'TWITTER', 'TELEGRAM', 'MICROSOFT', 'APPLE'
@@ -479,12 +481,24 @@ if ($candidates.Count -eq 0) {
 $priorityCandidates = @($candidates | Where-Object { $_.IsPriority })
 $normalCandidates = @($candidates | Where-Object { -not $_.IsPriority })
 
-$excludedGeoLookup = @{}
-foreach ($geoCode in $ExcludedGeoCodes) {
-    if (-not [string]::IsNullOrWhiteSpace($geoCode)) {
-        $excludedGeoLookup[$geoCode.Trim().ToUpperInvariant()] = $true
+function ConvertTo-GeoLookup {
+    param(
+        [string[]]$GeoCodes
+    )
+
+    # powershell -File passes "US,JP" as one string, so split on commas too.
+    $lookup = @{}
+    foreach ($geoCode in @($GeoCodes) -split ',') {
+        if (-not [string]::IsNullOrWhiteSpace($geoCode)) {
+            $lookup[$geoCode.Trim().ToUpperInvariant()] = $true
+        }
     }
+
+    return $lookup
 }
+
+$excludedGeoLookup = ConvertTo-GeoLookup -GeoCodes $ExcludedGeoCodes
+$includedGeoLookup = ConvertTo-GeoLookup -GeoCodes $IncludedGeoCodes
 
 $remainingPriority = @($priorityCandidates)
 $remainingNormal = @($normalCandidates)
@@ -642,6 +656,10 @@ try {
 
                 $geoCode = ([string]$row.GEO_CODE).Trim().ToUpperInvariant()
                 if ($excludedGeoLookup.ContainsKey($geoCode)) {
+                    continue
+                }
+
+                if ($includedGeoLookup.Count -gt 0 -and -not $includedGeoLookup.ContainsKey($geoCode)) {
                     continue
                 }
 
@@ -838,6 +856,7 @@ $summaryLines = @(
     "Website timeout seconds: $WebsiteTimeout",
     "Website check rounds: $WebsiteCheckRounds",
     "Excluded GEO_CODE values: $($ExcludedGeoCodes -join ', ')",
+    "Included GEO_CODE values: $(if ($includedGeoLookup.Count -gt 0) { $includedGeoLookup.Keys -join ', ' } else { 'all' })",
     "Selected CSV: $selectedCsvPath",
     "Scanner raw CSV: $scannerRawPath",
     "Website checks CSV: $websiteChecksPath",

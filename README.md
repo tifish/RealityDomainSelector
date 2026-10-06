@@ -33,6 +33,7 @@
 - 扫描结果的 `ORIGIN` 必须是本次随机选中的域名
 - 排除 `GEO_CODE` 为 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY`、`GOOGLE`、`FACEBOOK`、`NETFLIX`、`TWITTER`、`TELEGRAM`、`MICROSOFT`、`APPLE` 的结果（CDN 与大厂网络）
 - 使用原域名发起 HTTPS 请求，最终返回 `2xx`；默认连续检查 `3` 轮（间隔 0.5 秒），每轮都要通过，`usable-results.csv` 的 `HttpsAvgMs` 列记录平均响应耗时
+- 指定 `-IncludedGeoCodes` 时，只保留 `GEO_CODE` 在列表中的 IP（例如与 VPS 同国家的 `US`）
 - 对每个扫描到的 IP 用原域名作为 SNI 重新握手，证书链和主机名校验不通过的 IP 被剔除；一个 IP 都不剩的域名不合格
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
 - 跳转链中主机名发生变化时，原域名不合格；但如果跳到的是自身子域（如 `example.com` 跳到 `www.example.com`），会把跳转后的主机名作为新候选，在同一批内重新扫描和检查，结果中 `RedirectFrom` 列记录来源域名
@@ -124,6 +125,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | `-RequireTls13` | `$true` | 是否只保留 `TLS 1.3`。 |
 | `-RequireCertDomainMatch` | `$true` | 是否对每个 IP 握手校验证书对原域名有效（扫描器的 `CERT_DOMAIN` 只有 CN，不能直接比对）。 |
 | `-ExcludedGeoCodes` | `CLOUDFLARE, CLOUDFRONT, FASTLY, GOOGLE, FACEBOOK, NETFLIX, TWITTER, TELEGRAM, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |
+| `-IncludedGeoCodes` | 空（不限） | 只保留这些国家/地区代码的扫描结果，建议设为 VPS 所在国家，如 `US` 或 `US,CA`。 |
 | `-IncludeIpv6` | 关闭 | 启用扫描器的 `-46` 参数，同时检测 IPv6。 |
 | `-SkipScan` | 关闭 | 只生成随机候选，不调用扫描器。 |
 | `-Seed` | `0` | 随机种子；设置后可复现同一批候选。 |
@@ -154,6 +156,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -RequireCertDomainMatch $false
 ```
 
+只保留与 VPS 同国家（例如美国）的目标：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 -IncludedGeoCodes US
+```
+
 不按 `GEO_CODE` 排除热网络：
 
 ```powershell
@@ -164,6 +172,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1 
 
 - Tranco 原始列表通常只包含根域名或主域名，不一定包含 `docs.example.com` 这类子域名；优先关键词只会匹配列表中实际存在的域名字符串。
 - 随机样本可能一次没有可用结果，直接重新运行脚本即可抽取新样本。
+- Reality 目标最好与 VPS 处于同一地区甚至同一 ASN/机房。`-IncludedGeoCodes` 只能做到国家级别，最终使用前建议从 VPS 上测试到目标的延迟。
 - 扫描会产生真实网络请求，建议只在合规网络环境中使用。
 - HTTPS 检查会跟随最多 10 次同域名跳转；只比较主机名，路径变化不算域名跳转。同站子域跳转只补扫一层，补扫的主机名再次跨域跳转则直接排除。
 - `usable-domains.txt` 中只包含通过 TLS/REALITY、最终返回 `2xx` 且跳转链未改变域名的结果，最终使用前仍建议手动检查域名业务类型、访问稳定性和证书信息。
