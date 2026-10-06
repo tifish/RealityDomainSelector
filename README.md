@@ -84,7 +84,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 脚本会自动读取：
 
 - `.\top-1m.csv`
-- `.\RealiTLScanner.exe`
+- `.\RealiTLScanner-windows-64.exe`
+- `.\Country.mmdb`（扫描器总是在脚本目录下运行以加载它，因此可以从任意目录启动脚本）
 
 并把结果写入：
 

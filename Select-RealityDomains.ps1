@@ -75,6 +75,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $ScriptDir 'reality-scan-results'
 }
 
+# The scanner runs from $ScriptDir (see below), so pin user paths first.
+$TrancoCsv = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TrancoCsv)
+$ScannerPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ScannerPath)
+$OutputDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDir)
+$CountryMmdbPath = Join-Path $ScriptDir 'Country.mmdb'
+
 function Test-ReadableFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -314,6 +320,18 @@ function Test-WebsiteAccess {
 
 Test-ReadableFile -Path $TrancoCsv -Name 'Tranco CSV'
 Test-ReadableFile -Path $ScannerPath -Name 'RealiTLScanner'
+
+# RealiTLScanner loads Country.mmdb from its working directory; without it
+# GEO_CODE is N/A and every GEO_CODE filter silently stops working.
+if (-not $SkipScan) {
+    Test-ReadableFile -Path $CountryMmdbPath -Name 'Country.mmdb'
+
+    $mmdbContent = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($CountryMmdbPath))
+    if ($mmdbContent.IndexOf('CLOUDFLARE', [System.StringComparison]::Ordinal) -lt 0) {
+        Write-Warning "Country.mmdb has no CDN tags such as CLOUDFLARE; CDN-hosted IPs will not be excluded. Run Update-CountryMmdb.ps1."
+    }
+    $mmdbContent = $null
+}
 
 if ($MinRank -lt 1 -or $MaxRank -lt $MinRank) {
     throw "Invalid rank range: $MinRank to $MaxRank"
@@ -620,7 +638,13 @@ try {
                 }
 
                 Write-Host "Running RealiTLScanner for batch $batchCount pass $pass..."
-                & $ScannerPath @scannerArgs
+                Push-Location -LiteralPath $ScriptDir
+                try {
+                    & $ScannerPath @scannerArgs
+                }
+                finally {
+                    Pop-Location
+                }
 
                 if ($LASTEXITCODE -ne 0) {
                     throw "RealiTLScanner exited with code $LASTEXITCODE in batch $batchCount pass $pass"
