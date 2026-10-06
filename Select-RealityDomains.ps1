@@ -8,7 +8,7 @@ The default policy follows this project:
 - batch size: 2,000 domains
 - result target: 300 qualified domains
 - exclude hot brands and sensitive categories
-- prefer docs/static/assets/download/dl/support/help/developer/mirrors/cdn names
+- prefer docs/static/assets/download/dl/support/help/developer/mirrors names
 - keep scanner rows that are usable TLS 1.3 results
 - require the certificate to cover the domain on every kept IP
 - require an HTTPS 2xx response without changing the website domain
@@ -352,17 +352,18 @@ $SensitivePatterns = @(
 
 $ExcludePatterns = @($HotBrandPatterns + $SensitivePatterns)
 
+# Keywords must be followed by '.' or '-' so they never match the TLD
+# (.dev, .help, .support, .download are all real TLDs).
 $PriorityPatterns = [ordered]@{
-    docs      = '(^|[.-])(docs?|documentation)([.-]|$)'
-    static    = '(^|[.-])static([.-]|$)'
-    assets    = '(^|[.-])assets?([.-]|$)'
-    download  = 'download'
-    dl        = '(^|[.-])dl([.-]|$)'
-    support   = '(^|[.-])support([.-]|$)'
-    help      = '(^|[.-])help([.-]|$)'
-    developer = '(^|[.-])(developers?|dev)([.-]|$)'
-    mirrors   = '(^|[.-])mirrors?([.-]|$)'
-    cdn       = '(^|[.-])cdn([.-]|$)'
+    docs      = '(^|[.-])(docs?|documentation)[.-]'
+    static    = '(^|[.-])static[.-]'
+    assets    = '(^|[.-])assets?[.-]'
+    download  = 'download[^.]*\.'
+    dl        = '(^|[.-])dl[.-]'
+    support   = '(^|[.-])support[.-]'
+    help      = '(^|[.-])help[.-]'
+    developer = '(^|[.-])(developers?|dev)[.-]'
+    mirrors   = '(^|[.-])mirrors?[.-]'
 }
 
 $regexOptions =

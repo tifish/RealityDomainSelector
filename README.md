@@ -24,7 +24,7 @@
 - 单次运行最多扫描：`10` 批；达到上限仍不足 `300` 个时输出实际合格数量
 - 排除过热大站：`google`、`facebook`、`youtube`、`cloudflare`、`microsoft`、`apple` 等
 - 排除敏感类别：AI、社交、成人、博彩、加密货币、政治、下载盗版
-- 优先保留：`docs`、`static`、`assets`、`download`、`dl`、`support`、`help`、`developer`、`mirrors`、`cdn`
+- 优先保留：`docs`、`static`、`assets`、`download`、`dl`、`support`、`help`、`developer`、`mirrors`（关键词不匹配顶级域，如 `.dev`、`.help`；不再优先 `cdn`，因为这类域名多数托管在 CDN 上，会被 `GEO_CODE` 过滤掉）
 
 扫描后的可用结果默认还会满足：
 
