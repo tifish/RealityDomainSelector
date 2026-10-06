@@ -31,7 +31,7 @@
 - `TLS` 为 `TLS 1.3`
 - 证书域名字段不为空
 - 扫描结果的 `ORIGIN` 必须是本次随机选中的域名
-- 排除 `GEO_CODE` 为 `CLOUDFLARE`、`GOOGLE`、`FACEBOOK`、`MICROSOFT`、`APPLE` 的结果
+- 排除 `GEO_CODE` 为 `CLOUDFLARE`、`CLOUDFRONT`、`FASTLY`、`GOOGLE`、`FACEBOOK`、`NETFLIX`、`TWITTER`、`TELEGRAM`、`MICROSOFT`、`APPLE` 的结果（CDN 与大厂网络）
 - 使用原域名发起 HTTPS 请求，最终返回 `2xx`
 - 允许域名不变的路径跳转，例如 `example.com/` 跳到 `example.com/home`
 - 跳转链中主机名发生变化时排除，包括 `example.com` 跳到 `www.example.com`
@@ -120,7 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Select-RealityDomains.ps1
 | `-WebsiteTimeout` | `10` | 网站 HTTPS 访问检查超时秒数。 |
 | `-RequireTls13` | `$true` | 是否只保留 `TLS 1.3`。 |
 | `-RequireCertDomainMatch` | `$false` | 是否要求证书域名和 `ORIGIN` 匹配。 |
-| `-ExcludedGeoCodes` | `CLOUDFLARE, GOOGLE, FACEBOOK, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |
+| `-ExcludedGeoCodes` | `CLOUDFLARE, CLOUDFRONT, FASTLY, GOOGLE, FACEBOOK, NETFLIX, TWITTER, TELEGRAM, MICROSOFT, APPLE` | 扫描结果中需要排除的网络归属。 |
 | `-IncludeIpv6` | 关闭 | 启用扫描器的 `-46` 参数，同时检测 IPv6。 |
 | `-SkipScan` | 关闭 | 只生成随机候选，不调用扫描器。 |
 | `-Seed` | `0` | 随机种子；设置后可复现同一批候选。 |

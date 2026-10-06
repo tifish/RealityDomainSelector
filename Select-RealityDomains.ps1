@@ -21,7 +21,7 @@ param(
     [string]$ScannerPath = '',
     [string]$OutputDir = '',
 
-    [int]$MinRank = 2000,
+    [int]$MinRank = 3000,
     [int]$MaxRank = 200000,
     [int]$SampleCount = 2000,
     [int]$ResultCount = 100,
@@ -34,7 +34,10 @@ param(
 
     [bool]$RequireTls13 = $true,
     [bool]$RequireCertDomainMatch = $false,
-    [string[]]$ExcludedGeoCodes = @('CLOUDFLARE', 'GOOGLE', 'FACEBOOK', 'MICROSOFT', 'APPLE'),
+    [string[]]$ExcludedGeoCodes = @(
+        'CLOUDFLARE', 'CLOUDFRONT', 'FASTLY', 'GOOGLE', 'FACEBOOK',
+        'NETFLIX', 'TWITTER', 'TELEGRAM', 'MICROSOFT', 'APPLE'
+    ),
 
     [switch]$IncludeIpv6,
     [switch]$SkipScan,
